@@ -54,6 +54,7 @@ import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
 
 /**
+ * 实现扫描@feignclients 注解，原理和扫描@service 实现自动注入的  原理类似
  * @author Spencer Gibb
  * @author Jakub Narloch
  * @author Venil Noronha
@@ -136,6 +137,11 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 		this.resourceLoader = resourceLoader;
 	}
 
+	/**
+	 * 	// 接口方法实现类，扫描注解类的核心方法
+	 * @param metadata
+	 * @param registry
+	 */
 	@Override
 	public void registerBeanDefinitions(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
 		registerDefaultConfiguration(metadata, registry);
@@ -143,6 +149,7 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 	}
 
 	private void registerDefaultConfiguration(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
+		// 获取注解的所有属性值
 		Map<String, Object> defaultAttrs = metadata.getAnnotationAttributes(EnableFeignClients.class.getName(), true);
 
 		if (defaultAttrs != null && defaultAttrs.containsKey("defaultConfiguration")) {
@@ -158,6 +165,7 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 	}
 
 	public void registerFeignClients(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
+		// 获取类扫描器
 		ClassPathScanningCandidateComponentProvider scanner = getScanner();
 		scanner.setResourceLoader(this.resourceLoader);
 
@@ -165,9 +173,12 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 
 		Map<String, Object> attrs = metadata.getAnnotationAttributes(EnableFeignClients.class.getName());
 		AnnotationTypeFilter annotationTypeFilter = new AnnotationTypeFilter(FeignClient.class);
+		//获取@EnableFeignClients 中的client 属性，但是一般不会配置client属性
 		final Class<?>[] clients = attrs == null ? null : (Class<?>[]) attrs.get("clients");
 		if (clients == null || clients.length == 0) {
+			//程序会执行到这里，配置扫描器的过滤器
 			scanner.addIncludeFilter(annotationTypeFilter);
+			// 获取需要扫描的报名，默认情况下是@EnableFeignClients 注解所在的包
 			basePackages = getBasePackages(metadata);
 		}
 		else {
@@ -188,21 +199,25 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 		}
 
 		for (String basePackage : basePackages) {
+			//调用扫描器扫描包含@FeginClient注解的类
 			Set<BeanDefinition> candidateComponents = scanner.findCandidateComponents(basePackage);
 			for (BeanDefinition candidateComponent : candidateComponents) {
 				if (candidateComponent instanceof AnnotatedBeanDefinition) {
 					// verify annotated class is an interface
 					AnnotatedBeanDefinition beanDefinition = (AnnotatedBeanDefinition) candidateComponent;
 					AnnotationMetadata annotationMetadata = beanDefinition.getMetadata();
+					// 校验标注注解的类是否是接口
 					Assert.isTrue(annotationMetadata.isInterface(),
 							"@FeignClient can only be specified on an interface");
 
+					// 获取@FeignClient 所有属性
 					Map<String, Object> attributes = annotationMetadata
 							.getAnnotationAttributes(FeignClient.class.getCanonicalName());
-
+					// 获取属性中的name
+					// @FeignClient("ServiceA") // 主要获取的就是SeriviceA
 					String name = getClientName(attributes);
 					registerClientConfiguration(registry, name, attributes.get("configuration"));
-
+					// 注册feignClient
 					registerFeignClient(registry, annotationMetadata, attributes);
 				}
 			}
@@ -211,8 +226,14 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 
 	private void registerFeignClient(BeanDefinitionRegistry registry, AnnotationMetadata annotationMetadata,
 			Map<String, Object> attributes) {
+		// 获取标注了@FeginClient 的类名
 		String className = annotationMetadata.getClassName();
+		//获取备案、定义构造器
+		/**
+		 * FeignClientFactoryBean 很关键的一个类，通过工厂类，构造动态代理类
+		 */
 		BeanDefinitionBuilder definition = BeanDefinitionBuilder.genericBeanDefinition(FeignClientFactoryBean.class);
+		// 校验注解中的属性值，不正常则抛出异常
 		validate(attributes);
 		definition.addPropertyValue("url", getUrl(attributes));
 		definition.addPropertyValue("path", getPath(attributes));
@@ -225,12 +246,13 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 		definition.addPropertyValue("fallback", attributes.get("fallback"));
 		definition.addPropertyValue("fallbackFactory", attributes.get("fallbackFactory"));
 		definition.setAutowireMode(AbstractBeanDefinition.AUTOWIRE_BY_TYPE);
-
+		// 定义fegin 客户端别名
 		String alias = contextId + "FeignClient";
 		AbstractBeanDefinition beanDefinition = definition.getBeanDefinition();
 		beanDefinition.setAttribute(FactoryBean.OBJECT_TYPE_ATTRIBUTE, className);
 
 		// has a default, won't be null
+		// 设否标记为伪代理类 @Primary 默认是true
 		boolean primary = (Boolean) attributes.get("primary");
 
 		beanDefinition.setPrimary(primary);
