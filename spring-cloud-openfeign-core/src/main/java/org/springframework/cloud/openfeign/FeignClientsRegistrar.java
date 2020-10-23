@@ -231,6 +231,9 @@ class FeignClientsRegistrar implements ImportBeanDefinitionRegistrar, ResourceLo
 		//获取备案、定义构造器
 		/**
 		 * FeignClientFactoryBean 很关键的一个类，通过工厂类，构造动态代理类
+		 * 创建形成BeanDefinition
+		 * BeanDefinition就是spring将<bean><bean/>解析后存入BeanDefinition中
+		 * Spring通过BeanDefinition 反射构建对象，注入ioc容器中
 		 */
 		BeanDefinitionBuilder definition = BeanDefinitionBuilder.genericBeanDefinition(FeignClientFactoryBean.class);
 		// 校验注解中的属性值，不正常则抛出异常

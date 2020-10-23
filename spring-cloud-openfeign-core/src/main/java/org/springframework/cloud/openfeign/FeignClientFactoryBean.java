@@ -48,6 +48,9 @@ import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
+ * 创建FeignClient类的核心工厂方法
+ * 在FeignClientBuilder 中构造Builder 调用构造方法
+ *
  * @author Spencer Gibb
  * @author Venil Noronha
  * @author Eko Kurniawan Khannedy
@@ -61,7 +64,10 @@ public class FeignClientFactoryBean implements FactoryBean<Object>, Initializing
 	 * WARNING! Nothing in this class should be @Autowired. It causes NPEs because of some
 	 * lifecycle race condition.
 	 ***********************************/
-
+	/**
+	 * class 类型 比如ServceAFeignClient.class
+	 * 这些主要是配置到@FeignClient属性值
+	 */
 	private Class<?> type;
 
 	private String name;
@@ -94,13 +100,16 @@ public class FeignClientFactoryBean implements FactoryBean<Object>, Initializing
 
 	protected Feign.Builder feign(FeignContext context) {
 		FeignLoggerFactory loggerFactory = get(context, FeignLoggerFactory.class);
+		//默认Logger 是Slf4jLogger
 		Logger logger = loggerFactory.create(type);
 
 		// @formatter:off
 		Feign.Builder builder = get(context, Feign.Builder.class)
 				// required values
 				.logger(logger)
+				// 默认Encoder 是SpringEncoder
 				.encoder(get(context, Encoder.class))
+				// 默认Decoder ResponseEntityDecoder-》SpringDecoder 装饰器模式
 				.decoder(get(context, Decoder.class))
 				.contract(get(context, Contract.class));
 		// @formatter:on
@@ -122,6 +131,9 @@ public class FeignClientFactoryBean implements FactoryBean<Object>, Initializing
 	}
 
 	protected void configureFeign(FeignContext context, Feign.Builder builder) {
+		/**
+		 * @ConfigurationProperties("feign.client") 通用的全局feign 配置
+		 */
 		FeignClientProperties properties = applicationContext.getBean(FeignClientProperties.class);
 
 		FeignClientConfigurer feignClientConfigurer = getOptional(context, FeignClientConfigurer.class);
@@ -129,8 +141,11 @@ public class FeignClientFactoryBean implements FactoryBean<Object>, Initializing
 
 		if (properties != null && inheritParentContext) {
 			if (properties.isDefaultToProperties()) {
+				// 使用用户自定义级别配置 优先级最低
 				configureUsingConfiguration(context, builder);
+				// 读取application.yml feign.client配置
 				configureUsingProperties(properties.getConfig().get(properties.getDefaultConfig()), builder);
+				// 读取application.yml feign.client.xxService 配置 优先级最高
 				configureUsingProperties(properties.getConfig().get(contextId), builder);
 			}
 			else {
@@ -285,10 +300,22 @@ public class FeignClientFactoryBean implements FactoryBean<Object>, Initializing
 		}
 	}
 
+	/**
+	 * 新版本的feign 好像不在和hystrix 整合了 猜测是和spring cloud alibaba 有关
+	 * @param builder
+	 * @param context
+	 * @param target
+	 * @param <T>
+	 * @return
+	 */
+
 	protected <T> T loadBalance(Feign.Builder builder, FeignContext context, HardCodedTarget<T> target) {
+		// getOptional 是可选的
+		//client 默认是 LoadBalancerFeignClient
 		Client client = getOptional(context, Client.class);
 		if (client != null) {
 			builder.client(client);
+			// get是必须存在的，否则会报错
 			Targeter targeter = get(context, Targeter.class);
 			return targeter.target(this, builder, context, target);
 		}
